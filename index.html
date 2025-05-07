@@ -1,14 +1,786 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Zero-G Delivery</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    canvas { display: block; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-G Delivery</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #000;
+            color: #fff;
+        }
+        canvas {
+            display: block;
+        }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            user-select: none;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            user-select: none;
+        }
+        #mission-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            text-align: right;
+            user-select: none;
+        }
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 100;
+        }
+        #start-screen h1 {
+            color: #0ff;
+            font-size: 4rem;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 10px #0ff;
+        }
+        #start-screen p {
+            color: #fff;
+            font-size: 1.2rem;
+            max-width: 600px;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        #start-button {
+            background-color: #0ff;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #start-button:hover {
+            background-color: #fff;
+            transform: scale(1.1);
+        }
+        .thruster-indicator {
+            width: 150px;
+            height: 20px;
+            background-color: #333;
+            margin-top: 5px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .thruster-level {
+            height: 100%;
+            width: 100%;
+            background-color: #0ff;
+            transform-origin: left;
+        }
+        .delivery-marker {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            margin-left: -10px;
+            margin-top: -10px;
+            border-radius: 50%;
+            background-color: rgba(0, 255, 255, 0.5);
+            border: 2px solid #0ff;
+            animation: pulse 2s infinite;
+            pointer-events: none;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0.7; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0.7; }
+        }
+    </style>
 </head>
 <body>
-  <script type="module" src="main.js"></script>
+    <div id="hud">
+        <div>Velocity: <span id="velocity">0.00</span> m/s</div>
+        <div>Fuel: <span id="fuel">100</span>%</div>
+        <div>Cargo: <span id="cargo-status">Secure</span></div>
+        <div>
+            Thrusters:
+            <div class="thruster-indicator">
+                <div id="thruster-level" class="thruster-level"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div>WASD: Thrusters</div>
+        <div>QE: Roll</div>
+        <div>Arrows: Rotate</div>
+        <div>Space: Full Stop</div>
+    </div>
+    
+    <div id="mission-info">
+        <div>Mission: <span id="mission-name">Asteroid Run</span></div>
+        <div>Distance to Delivery: <span id="delivery-distance">0</span> m</div>
+        <div>Time Remaining: <span id="mission-time">120</span> s</div>
+    </div>
+    
+    <div id="start-screen">
+        <h1>ZERO-G DELIVERY</h1>
+        <p>Navigate your spacecraft through treacherous space environments to deliver essential cargo. 
+           Master momentum in zero gravity as you avoid obstacles and reach your destination intact.</p>
+        <button id="start-button">START MISSION</button>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let gameActive = false;
+        let spacecraft;
+        let velocity = new THREE.Vector3();
+        let angularVelocity = new THREE.Vector3();
+        let thrusters = {
+            forward: false,
+            backward: false,
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            rollLeft: false,
+            rollRight: false
+        };
+        let fuel = 100;
+        let fuelConsumptionRate = 0.05;
+        let fuelRegenRate = 0.02;
+        let thrusterPower = 0.005;
+        let maxSpeed = 0.3;
+        let angularThrusterPower = 0.0015;
+        let dampingFactor = 0.995;
+        let missionTime = 120;
+        let deliveryPoint;
+        let deliveryMarker;
+        
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000011);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(50, 200, 100);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+        
+        const pointLight = new THREE.PointLight(0x0088ff, 1, 50);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
+        
+        function createSpacecraft() {
+            const spacecraftGroup = new THREE.Group();
+            
+            const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.7, 2, 8);
+            const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x888888, shininess: 100 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.rotation.x = Math.PI / 2;
+            spacecraftGroup.add(body);
+            
+            const wingGeometry = new THREE.BoxGeometry(3, 0.1, 0.8);
+            const wingMaterial = new THREE.MeshPhongMaterial({ color: 0x444444 });
+            const wings = new THREE.Mesh(wingGeometry, wingMaterial);
+            wings.position.y = -0.2;
+            spacecraftGroup.add(wings);
+            
+            const cockpitGeometry = new THREE.SphereGeometry(0.4, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const cockpitMaterial = new THREE.MeshPhongMaterial({ color: 0x44aaff, transparent: true, opacity: 0.7 });
+            const cockpit = new THREE.Mesh(cockpitGeometry, cockpitMaterial);
+            cockpit.position.z = 0.5;
+            cockpit.rotation.x = Math.PI;
+            spacecraftGroup.add(cockpit);
+            
+            const thrusterGeometry = new THREE.CylinderGeometry(0.2, 0.3, 0.4, 8);
+            const thrusterMaterial = new THREE.MeshPhongMaterial({ color: 0x555555 });
+            
+            const thrusterLeft = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
+            thrusterLeft.position.set(-0.8, 0, -1);
+            thrusterLeft.rotation.x = Math.PI / 2;
+            spacecraftGroup.add(thrusterLeft);
+            
+            const thrusterRight = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
+            thrusterRight.position.set(0.8, 0, -1);
+            thrusterRight.rotation.x = Math.PI / 2;
+            spacecraftGroup.add(thrusterRight);
+            
+            const cargoGeometry = new THREE.BoxGeometry(0.8, 0.8, 1);
+            const cargoMaterial = new THREE.MeshPhongMaterial({ color: 0xaa5500 });
+            const cargo = new THREE.Mesh(cargoGeometry, cargoMaterial);
+            cargo.position.z = -1;
+            spacecraftGroup.add(cargo);
+            
+            const thrusterGlowGeometry = new THREE.ConeGeometry(0.3, 1, 8);
+            const thrusterGlowMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.7 
+            });
+            
+            const thrusterGlowLeft = new THREE.Mesh(thrusterGlowGeometry, thrusterGlowMaterial);
+            thrusterGlowLeft.position.set(-0.8, 0, -1.5);
+            thrusterGlowLeft.rotation.x = -Math.PI / 2;
+            thrusterGlowLeft.visible = false;
+            thrusterGlowLeft.name = "thrusterGlowLeft";
+            spacecraftGroup.add(thrusterGlowLeft);
+            
+            const thrusterGlowRight = new THREE.Mesh(thrusterGlowGeometry, thrusterGlowMaterial);
+            thrusterGlowRight.position.set(0.8, 0, -1.5);
+            thrusterGlowRight.rotation.x = -Math.PI / 2;
+            thrusterGlowRight.visible = false;
+            thrusterGlowRight.name = "thrusterGlowRight";
+            spacecraftGroup.add(thrusterGlowRight);
+            
+            spacecraftGroup.position.set(0, 0, 0);
+            return spacecraftGroup;
+        }
+        
+        function createAsteroids(count) {
+            const asteroids = [];
+            const asteroidTexture = new THREE.TextureLoader().load('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/images/stone.jpg');
+            
+            for (let i = 0; i < count; i++) {
+                const radius = Math.random() * 1.5 + 0.5;
+                const geometry = new THREE.SphereGeometry(radius, 8, 6);
+                
+                const vertices = geometry.attributes.position;
+                for (let j = 0; j < vertices.count; j++) {
+                    const offset = (Math.random() - 0.5) * 0.2 * radius;
+                    vertices.setZ(j, vertices.getZ(j) + offset);
+                    vertices.setY(j, vertices.getY(j) + offset);
+                    vertices.setX(j, vertices.getX(j) + offset);
+                }
+                
+                geometry.computeVertexNormals();
+                
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: Math.random() * 0x666666 + 0x333333,
+                    roughness: 0.9,
+                    map: asteroidTexture
+                });
+                
+                const asteroid = new THREE.Mesh(geometry, material);
+                
+                let validPosition = false;
+                let position;
+                
+                while (!validPosition) {
+                    position = new THREE.Vector3(
+                        (Math.random() - 0.5) * 100,
+                        (Math.random() - 0.5) * 100,
+                        (Math.random() - 0.5) * 100
+                    );
+                    
+                    if (position.length() > 10) {
+                        const distToDelivery = position.distanceTo(deliveryPoint.position);
+                        if (distToDelivery > 10) {
+                            validPosition = true;
+                        }
+                    }
+                }
+                
+                asteroid.position.copy(position);
+                asteroid.rotation.set(
+                    Math.random() * Math.PI * 2,
+                    Math.random() * Math.PI * 2,
+                    Math.random() * Math.PI * 2
+                );
+                
+                asteroid.userData.spin = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.005,
+                    (Math.random() - 0.5) * 0.005,
+                    (Math.random() - 0.5) * 0.005
+                );
+
+                scene.add(asteroid);
+                asteroids.push(asteroid);
+            }
+            
+            return asteroids;
+        }
+        
+        function createDeliveryPoint() {
+            const group = new THREE.Group();
+
+            const baseGeometry = new THREE.CylinderGeometry(3, 3, 0.5, 16);
+            const baseMaterial = new THREE.MeshPhongMaterial({ color: 0x0088ff });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            group.add(base);
+
+            const towerGeometry = new THREE.CylinderGeometry(0.5, 0.5, 5, 8);
+            const towerMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
+            const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+            tower.position.y = 2.5;
+            group.add(tower);
+
+            const beaconGeometry = new THREE.SphereGeometry(0.7, 16, 16);
+            const beaconMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.8 
+            });
+            const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
+            beacon.position.y = 5.5;
+            beacon.userData = {
+                pulsePhase: 0,
+                animate: function(delta) {
+                    this.pulsePhase += delta * 2;
+                    const scale = 1 + 0.2 * Math.sin(this.pulsePhase);
+                    beacon.scale.set(scale, scale, scale);
+                    
+                    beaconMaterial.opacity = 0.5 + 0.5 * Math.sin(this.pulsePhase);
+                }
+            };
+            group.add(beacon);
+            
+            const panelGeometry = new THREE.BoxGeometry(6, 0.1, 1.5);
+            const panelMaterial = new THREE.MeshPhongMaterial({ color: 0x2244aa });
+            
+            const panel1 = new THREE.Mesh(panelGeometry, panelMaterial);
+            panel1.position.set(0, 2, 3);
+            panel1.rotation.x = Math.PI / 6;
+            group.add(panel1);
+            
+            const panel2 = new THREE.Mesh(panelGeometry, panelMaterial);
+            panel2.position.set(0, 2, -3);
+            panel2.rotation.x = -Math.PI / 6;
+            group.add(panel2);
+            
+            group.position.set(50, 30, -40);
+            
+            const beaconLight = new THREE.PointLight(0x00ffff, 2, 50);
+            beaconLight.position.copy(beacon.position);
+            group.add(beaconLight);
+            
+            return group;
+        }
+        
+        function createStars() {
+            const starGeometry = new THREE.BufferGeometry();
+            const starCount = 2000;
+            
+            const positions = new Float32Array(starCount * 3);
+            const sizes = new Float32Array(starCount);
+            
+            for (let i = 0; i < starCount; i++) {
+                const i3 = i * 3;
+                const radius = 300 + Math.random() * 700;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                
+                positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                positions[i3 + 2] = radius * Math.cos(phi);
+                
+                sizes[i] = Math.random() * 2 + 0.5;
+            }
+            
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.7,
+                sizeAttenuation: true
+            });
+            
+            const stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+            
+            return stars;
+        }
+        
+        function createDeliveryScreenMarker() {
+            const marker = document.createElement('div');
+            marker.className = 'delivery-marker';
+            document.body.appendChild(marker);
+            return marker;
+        }
+        
+        function updateDeliveryMarker() {
+            if (!deliveryMarker || !deliveryPoint) return;
+            
+            const vector = deliveryPoint.position.clone();
+            vector.project(camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+            
+            if (vector.z < 1) {
+                deliveryMarker.style.display = 'block';
+                deliveryMarker.style.left = x + 'px';
+                deliveryMarker.style.top = y + 'px';
+            } else {
+                deliveryMarker.style.display = 'none';
+            }
+        }
+        
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            gameActive = true;
+            
+            velocity.set(0, 0, 0);
+            angularVelocity.set(0, 0, 0);
+            fuel = 100;
+            missionTime = 120;
+            
+            spacecraft = createSpacecraft();
+            scene.add(spacecraft);
+            
+            deliveryPoint = createDeliveryPoint();
+            scene.add(deliveryPoint);
+            
+            deliveryMarker = createDeliveryScreenMarker();
+            
+            asteroids = createAsteroids(40);
+            
+            stars = createStars();
+            
+            camera.position.set(0, 3, 10);
+            camera.lookAt(spacecraft.position);
+            
+            requestAnimationFrame(animate);
+
+            startMissionTimer();
+        }
+        
+        function startMissionTimer() {
+            const timerInterval = setInterval(() => {
+                if (!gameActive) {
+                    clearInterval(timerInterval);
+                    return;
+                }
+                
+                missionTime--;
+                document.getElementById('mission-time').textContent = missionTime;
+                
+                if (missionTime <= 0) {
+                    gameOver('Time\'s up! Delivery failed.');
+                    clearInterval(timerInterval);
+                }
+            }, 1000);
+        }
+        
+        function gameOver(message) {
+            gameActive = false;
+            
+            const gameOverScreen = document.createElement('div');
+            gameOverScreen.style.position = 'absolute';
+            gameOverScreen.style.top = '0';
+            gameOverScreen.style.left = '0';
+            gameOverScreen.style.width = '100%';
+            gameOverScreen.style.height = '100%';
+            gameOverScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            gameOverScreen.style.display = 'flex';
+            gameOverScreen.style.flexDirection = 'column';
+            gameOverScreen.style.justifyContent = 'center';
+            gameOverScreen.style.alignItems = 'center';
+            gameOverScreen.style.zIndex = '100';
+            
+            const gameOverTitle = document.createElement('h1');
+            gameOverTitle.textContent = message;
+            gameOverTitle.style.color = '#0ff';
+            gameOverTitle.style.fontSize = '3rem';
+            gameOverTitle.style.marginBottom = '2rem';
+            
+            const restartButton = document.createElement('button');
+            restartButton.textContent = 'Try Again';
+            restartButton.style.backgroundColor = '#0ff';
+            restartButton.style.color = '#000';
+            restartButton.style.border = 'none';
+            restartButton.style.padding = '15px 30px';
+            restartButton.style.fontSize = '1.5rem';
+            restartButton.style.borderRadius = '5px';
+            restartButton.style.cursor = 'pointer';
+            
+            restartButton.addEventListener('click', () => {
+                scene.remove(spacecraft);
+                scene.remove(deliveryPoint);
+                if (deliveryMarker) {
+                    document.body.removeChild(deliveryMarker);
+                }
+                asteroids.forEach(asteroid => scene.remove(asteroid));
+                scene.remove(stars);
+                document.body.removeChild(gameOverScreen);
+                
+                startGame();
+            });
+            
+            gameOverScreen.appendChild(gameOverTitle);
+            gameOverScreen.appendChild(restartButton);
+            document.body.appendChild(gameOverScreen);
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        window.addEventListener('resize', onWindowResize);
+
+        function handleKeyDown(event) {
+            if (!gameActive) return;
+            
+            switch(event.key) {
+                case 'w': thrusters.forward = true; break;
+                case 's': thrusters.backward = true; break;
+                case 'a': thrusters.left = true; break;
+                case 'd': thrusters.right = true; break;
+                case 'r': thrusters.up = true; break;
+                case 'f': thrusters.down = true; break;
+                case 'q': thrusters.rollLeft = true; break;
+                case 'e': thrusters.rollRight = true; break;
+                case 'ArrowUp': 
+                    angularVelocity.x -= angularThrusterPower * 3; 
+                    break;
+                case 'ArrowDown': 
+                    angularVelocity.x += angularThrusterPower * 3; 
+                    break;
+                case 'ArrowLeft': 
+                    angularVelocity.y -= angularThrusterPower * 3; 
+                    break;
+                case 'ArrowRight': 
+                    angularVelocity.y += angularThrusterPower * 3; 
+                    break;
+                case ' ':
+                    // Emergency stop
+                    if (fuel >= 20) {
+                        velocity.multiplyScalar(0.2);
+                        angularVelocity.multiplyScalar(0.2);
+                        fuel -= 20;
+                    }
+                    break;
+            }
+        }
+        
+        function handleKeyUp(event) {
+            if (!gameActive) return;
+            
+            switch(event.key) {
+                case 'w': thrusters.forward = false; break;
+                case 's': thrusters.backward = false; break;
+                case 'a': thrusters.left = false; break;
+                case 'd': thrusters.right = false; break;
+                case 'r': thrusters.up = false; break;
+                case 'f': thrusters.down = false; break;
+                case 'q': thrusters.rollLeft = false; break;
+                case 'e': thrusters.rollRight = false; break;
+            }
+        }
+        
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        
+        let lastTime = 0;
+        function animate(time) {
+            if (!gameActive) return;
+            
+            const delta = lastTime ? (time - lastTime) / 1000 : 0.016;
+            lastTime = time;
+            
+            requestAnimationFrame(animate);
+            
+            if (spacecraft) {
+                updateSpacecraft(delta);
+                checkCollisions();
+                checkDelivery();
+                updateHUD();
+            }
+            
+            if (deliveryPoint) {
+                const beacon = deliveryPoint.children[3];
+                if (beacon && beacon.userData && typeof beacon.userData.animate === 'function') {
+                    beacon.userData.animate(delta);
+                }
+
+                updateDeliveryMarker();
+            }
+
+            if (asteroids) {
+                asteroids.forEach(asteroid => {
+                    asteroid.rotation.x += asteroid.userData.spin.x;
+                    asteroid.rotation.y += asteroid.userData.spin.y;
+                    asteroid.rotation.z += asteroid.userData.spin.z;
+                });
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        function updateSpacecraft(delta) {
+            // Apply damping
+            velocity.multiplyScalar(dampingFactor);
+            angularVelocity.multiplyScalar(dampingFactor);
+            
+            let thrusterActive = false;
+            if (fuel > 0) {
+                const forwardVector = new THREE.Vector3(0, 0, -1).applyQuaternion(spacecraft.quaternion);
+                const rightVector = new THREE.Vector3(1, 0, 0).applyQuaternion(spacecraft.quaternion);
+                const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(spacecraft.quaternion);
+                
+                if (thrusters.forward) {
+                    velocity.addScaledVector(forwardVector, thrusterPower);
+                    thrusterActive = true;
+                }
+                if (thrusters.backward) {
+                    velocity.addScaledVector(forwardVector, -thrusterPower);
+                    thrusterActive = true;
+                }
+                if (thrusters.right) {
+                    velocity.addScaledVector(rightVector, thrusterPower);
+                    thrusterActive = true;
+                }
+                if (thrusters.left) {
+                    velocity.addScaledVector(rightVector, -thrusterPower);
+                    thrusterActive = true;
+                }
+                if (thrusters.up) {
+                    velocity.addScaledVector(upVector, thrusterPower);
+                    thrusterActive = true;
+                }
+                if (thrusters.down) {
+                    velocity.addScaledVector(upVector, -thrusterPower);
+                    thrusterActive = true;
+                }
+                
+                if (thrusters.rollLeft) {
+                    angularVelocity.z += angularThrusterPower;
+                    thrusterActive = true;
+                }
+                if (thrusters.rollRight) {
+                    angularVelocity.z -= angularThrusterPower;
+                    thrusterActive = true;
+                }
+                
+                if (thrusterActive) {
+                    fuel = Math.max(0, fuel - fuelConsumptionRate);
+                } else {
+                    fuel = Math.min(100, fuel + fuelRegenRate);
+                }
+            }
+            
+
+            const thrusterGlowLeft = spacecraft.getObjectByName("thrusterGlowLeft");
+            const thrusterGlowRight = spacecraft.getObjectByName("thrusterGlowRight");
+            
+            if (thrusterGlowLeft && thrusterGlowRight) {
+                thrusterGlowLeft.visible = thrusters.forward;
+                thrusterGlowRight.visible = thrusters.forward;
+            }
+            
+            const currentSpeed = velocity.length();
+            if (currentSpeed > maxSpeed) {
+                velocity.normalize().multiplyScalar(maxSpeed);
+            }
+            
+            spacecraft.position.addScaledVector(velocity, delta * 50);
+            
+            spacecraft.rotation.x += angularVelocity.x * delta * 50;
+            spacecraft.rotation.y += angularVelocity.y * delta * 50;
+            spacecraft.rotation.z += angularVelocity.z * delta * 50;
+
+            const cameraOffset = new THREE.Vector3(0, 2, 8);
+            cameraOffset.applyQuaternion(spacecraft.quaternion);
+            camera.position.copy(spacecraft.position).add(cameraOffset);
+            camera.lookAt(spacecraft.position);
+        }
+        
+        function checkCollisions() {
+            if (!asteroids || !spacecraft) return;
+            
+            const spacecraftRadius = 1.5;
+            
+            for (let i = 0; i < asteroids.length; i++) {
+                const asteroid = asteroids[i];
+                const asteroidRadius = asteroid.geometry.parameters.radius;
+                
+                const distance = spacecraft.position.distanceTo(asteroid.position);
+                
+                if (distance < (spacecraftRadius + asteroidRadius)) {
+                    gameOver("Collision! Cargo Damaged");
+                    return;
+                }
+            }
+        }
+        
+        function checkDelivery() {
+            if (!deliveryPoint || !spacecraft) return;
+            
+            const distance = spacecraft.position.distanceTo(deliveryPoint.position);
+            const deliveryRadius = 5;
+            
+            if (distance < deliveryRadius) {
+                const speed = velocity.length();
+                
+                if (speed < 0.05) {
+
+                    gameOver("Delivery Successful! Mission Complete");
+                } else {
+                    gameOver("Approach too fast! Cargo Damaged");
+                }
+            }
+        }
+        
+        function updateHUD() {
+            if (!spacecraft || !deliveryPoint) return;
+            
+            const speed = velocity.length() * 100;
+            document.getElementById('velocity').textContent = speed.toFixed(2);
+            
+            document.getElementById('fuel').textContent = Math.floor(fuel);
+            
+            const thrusterEl = document.getElementById('thruster-level');
+            thrusterEl.style.transform = `scaleX(${fuel / 100})`;
+            
+            const cargoStatus = document.getElementById('cargo-status');
+            
+            if (speed > 80) {
+                cargoStatus.textContent = "WARNING: Unstable";
+                cargoStatus.style.color = "#ff0000";
+            } else if (speed > 50) {
+                cargoStatus.textContent = "Caution";
+                cargoStatus.style.color = "#ffaa00";
+            } else {
+                cargoStatus.textContent = "Secure";
+                cargoStatus.style.color = "#00ff00";
+            }
+            
+            const distance = spacecraft.position.distanceTo(deliveryPoint.position);
+            document.getElementById('delivery-distance').textContent = Math.floor(distance);
+        }
+        
+        document.getElementById('start-button').addEventListener('click', startGame);
+    </script>
 </body>
 </html>
