@@ -1,5 +1,3 @@
-// game.js - Main game logic
-
 class ZeroGDelivery {
     constructor() {
         this.gameActive = false;
@@ -29,12 +27,11 @@ class ZeroGDelivery {
         this.asteroids = [];
         this.stars = null;
         this.lastTime = 0;
-        this.difficulty = 'normal'; // Can be 'easy', 'normal', 'hard'
-        this.missionType = 'delivery'; // Can be 'delivery', 'rescue', 'exploration'
+        this.difficulty = 'normal';
+        this.missionType = 'delivery';
         this.score = 0;
         this.powerups = [];
         
-        // Initialize scene, camera, renderer
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x000011);
         
@@ -46,10 +43,8 @@ class ZeroGDelivery {
         this.renderer.shadowMap.enabled = true;
         document.body.appendChild(this.renderer.domElement);
 
-        // Add lights
         this.setupLights();
         
-        // Bind event handlers
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleKeyUp = this.handleKeyUp.bind(this);
         this.onWindowResize = this.onWindowResize.bind(this);
@@ -58,11 +53,9 @@ class ZeroGDelivery {
         window.addEventListener('keydown', this.handleKeyDown);
         window.addEventListener('keyup', this.handleKeyUp);
         window.addEventListener('resize', this.onWindowResize);
-        
-        // Initialize event listeners for UI
+
         document.getElementById('start-button').addEventListener('click', () => this.startGame());
-        
-        // Load sound effects
+
         this.sounds = {
             thruster: new Audio('sounds/thruster.mp3'),
             collision: new Audio('sounds/collision.mp3'),
@@ -71,7 +64,6 @@ class ZeroGDelivery {
             powerup: new Audio('sounds/powerup.mp3')
         };
         
-        // Initialize optional background music
         this.bgMusic = new Audio('sounds/space_ambient.mp3');
         this.bgMusic.loop = true;
         this.bgMusic.volume = 0.5;
@@ -155,7 +147,6 @@ class ZeroGDelivery {
         
         spacecraftGroup.position.set(0, 0, 0);
         
-        // Add spacecraft collision box for better collision detection
         spacecraftGroup.userData.collider = new THREE.Box3().setFromObject(spacecraftGroup);
         
         return spacecraftGroup;
@@ -220,15 +211,13 @@ class ZeroGDelivery {
                 (Math.random() - 0.5) * 0.005,
                 (Math.random() - 0.5) * 0.005
             );
-            
-            // Add velocity for moving asteroids
+
             asteroid.userData.velocity = new THREE.Vector3(
                 (Math.random() - 0.5) * 0.02,
                 (Math.random() - 0.5) * 0.02,
                 (Math.random() - 0.5) * 0.02
             );
-            
-            // Add collision detection
+
             asteroid.userData.collider = new THREE.Sphere(
                 asteroid.position.clone(),
                 radius
@@ -335,7 +324,6 @@ class ZeroGDelivery {
         group.add(glow);
         
         if (!position) {
-            // Random position if none provided
             position = new THREE.Vector3(
                 (Math.random() - 0.5) * 60,
                 (Math.random() - 0.5) * 60,
@@ -358,7 +346,6 @@ class ZeroGDelivery {
                 const scale = 1 + 0.1 * Math.sin(this.pulsePhase);
                 glow.scale.set(scale, scale, scale);
                 
-                // Update collider position
                 this.collider.center.copy(group.position);
             }
         };
@@ -444,7 +431,6 @@ class ZeroGDelivery {
         
         this.deliveryMarker = this.createDeliveryScreenMarker();
         
-        // Create obstacles based on difficulty
         let asteroidCount = 30;
         if (this.difficulty === 'easy') asteroidCount = 20;
         if (this.difficulty === 'hard') asteroidCount = 50;
@@ -453,7 +439,6 @@ class ZeroGDelivery {
         
         this.stars = this.createStars();
         
-        // Add some power-ups
         this.spawnPowerups(5);
         
         this.camera.position.set(0, 3, 10);
@@ -499,11 +484,9 @@ class ZeroGDelivery {
         this.gameActive = false;
         clearInterval(this.missionTimerId);
         
-        // Stop sounds
         this.bgMusic.pause();
         this.bgMusic.currentTime = 0;
         
-        // Play success or collision sound
         if (message.includes('Successful')) {
             this.sounds.success.play();
         } else {
@@ -616,12 +599,10 @@ class ZeroGDelivery {
                 this.angularVelocity.y += this.angularThrusterPower * 3; 
                 break;
             case ' ':
-                // Emergency stop
                 if (this.fuel >= 20) {
                     this.velocity.multiplyScalar(0.2);
                     this.angularVelocity.multiplyScalar(0.2);
                     this.fuel -= 20;
-                    // Play sound
                     this.sounds.thruster.currentTime = 0;
                     this.sounds.thruster.play();
                 }
@@ -674,8 +655,7 @@ class ZeroGDelivery {
                 asteroid.rotation.x += asteroid.userData.spin.x;
                 asteroid.rotation.y += asteroid.userData.spin.y;
                 asteroid.rotation.z += asteroid.userData.spin.z;
-                
-                // Move asteroids that have velocity
+
                 if (asteroid.userData.velocity) {
                     asteroid.position.addScaledVector(asteroid.userData.velocity, delta * 50);
                     asteroid.userData.collider.center.copy(asteroid.position);
@@ -695,7 +675,6 @@ class ZeroGDelivery {
     }
     
     updateSpacecraft(delta) {
-        // Apply damping
         this.velocity.multiplyScalar(this.dampingFactor);
         this.angularVelocity.multiplyScalar(this.dampingFactor);
         
