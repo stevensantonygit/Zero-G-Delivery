@@ -333,10 +333,3 @@ function createSettingsForSection(container, sectionId) {
         container.appendChild(settingContainer);
     });
 }
-
-function createKeyBindingsEditor(container, bindings) {
-    const header = document.createElement('h3');
-    header.textContent = 'Key Bindings';
-    container.appendChild(header);
-    
-    const bindings
