@@ -119,4 +119,3 @@ class GamePhysics {
             }
             if (this.thrusters.right) {
                 this.velocity.addScaledVector(rightVector, this.thrusterPower);
-                thrusterActive =

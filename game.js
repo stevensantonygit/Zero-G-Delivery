@@ -692,5 +692,3 @@ class ZeroGDelivery {
                 this.velocity.addScaledVector(forwardVector, -this.thrusterPower);
                 thrusterActive = true;
             }
-            if (this.thrusters.right) {
-                this.velocity
